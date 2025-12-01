@@ -1,3 +1,6 @@
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
+
 plugins {
     alias(libs.plugins.jetbrains.kotlin.multiplatform)
 }
@@ -7,11 +10,14 @@ repositories {
 }
 
 kotlin {
-    jvm()
     jvmToolchain(21)
-}
 
-tasks.register<JavaExec>("day1") {
-    mainClass = "com.dzirbel.day1.Day1Kt"
-    classpath = sourceSets["jvmMain"].runtimeClasspath
+    jvm {
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        binaries {
+            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day1") {
+                mainClass.set("com.dzirbel.day1.Day1Kt")
+            }
+        }
+    }
 }
