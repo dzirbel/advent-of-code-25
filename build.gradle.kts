@@ -21,3 +21,10 @@ kotlin {
         }
     }
 }
+
+tasks.register("runAll") {
+    group = "application"
+    description = "Run all executable binaries."
+
+    dependsOn(tasks.named { taskName -> taskName.startsWith("run") && taskName != name })
+}
