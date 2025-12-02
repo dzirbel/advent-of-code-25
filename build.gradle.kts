@@ -18,6 +18,14 @@ kotlin {
             executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day1") {
                 mainClass.set("com.dzirbel.day1.Day1Kt")
             }
+
+            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day2a") {
+                mainClass.set("com.dzirbel.day2.Day2aKt")
+            }
+
+            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day2b") {
+                mainClass.set("com.dzirbel.day2.Day2bKt")
+            }
         }
     }
 }
