@@ -15,8 +15,12 @@ kotlin {
     jvm {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         binaries {
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day1") {
-                mainClass.set("com.dzirbel.day1.Day1Kt")
+            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day1a") {
+                mainClass.set("com.dzirbel.day1.Day1aKt")
+            }
+
+            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day1b") {
+                mainClass.set("com.dzirbel.day1.Day1bKt")
             }
 
             executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day2a") {
