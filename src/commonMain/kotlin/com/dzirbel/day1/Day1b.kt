@@ -20,12 +20,10 @@ fun main(args: Array<String>) {
                 else -> error("invalid direction")
             }
 
-            val prev = dial
-
             dial += delta
 
             if (dial == 0) hits++
-            if (prev != 0 && dial < 0) hits++
+            if (dial < 0 && dial != delta) hits++
             hits += (abs(dial) / 100).coerceAtLeast(0)
 
             dial = ((dial % 100) + 100) % 100 // floorMod 100
