@@ -54,6 +54,14 @@ kotlin {
             executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day5b") {
                 mainClass.set("com.dzirbel.day5.Day5bKt")
             }
+
+            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day6a") {
+                mainClass.set("com.dzirbel.day6.Day6aKt")
+            }
+
+            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day6b") {
+                mainClass.set("com.dzirbel.day6.Day6bKt")
+            }
         }
     }
 }
