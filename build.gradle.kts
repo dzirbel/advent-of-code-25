@@ -12,63 +12,41 @@ repositories {
 kotlin {
     jvmToolchain(21)
 
+    val mainRegex = Regex("""fun\s+main\s*\(""")
+    val mainClassFiles: List<File> = sourceSets.flatMap { sourceSet ->
+        files(sourceSet.kotlin.srcDirs).flatMap { srcDir ->
+            files(srcDir)
+                .asFileTree
+                .matching { include("**/*.kt") }
+                .filter { file ->
+                    file.useLines { lines ->
+                        lines.any { line -> line.contains(mainRegex) }
+                    }
+                }
+                .map { file -> file.relativeTo(srcDir) }
+        }
+    }
+
     jvm {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         binaries {
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day1a") {
-                mainClass.set("com.dzirbel.day1.Day1aKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day1b") {
-                mainClass.set("com.dzirbel.day1.Day1bKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day2a") {
-                mainClass.set("com.dzirbel.day2.Day2aKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day2b") {
-                mainClass.set("com.dzirbel.day2.Day2bKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day3a") {
-                mainClass.set("com.dzirbel.day3.Day3aKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day3b") {
-                mainClass.set("com.dzirbel.day3.Day3bKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day4a") {
-                mainClass.set("com.dzirbel.day4.Day4aKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day4b") {
-                mainClass.set("com.dzirbel.day4.Day4bKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day5a") {
-                mainClass.set("com.dzirbel.day5.Day5aKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day5b") {
-                mainClass.set("com.dzirbel.day5.Day5bKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day6a") {
-                mainClass.set("com.dzirbel.day6.Day6aKt")
-            }
-
-            executable(KotlinCompilation.MAIN_COMPILATION_NAME, "day6b") {
-                mainClass.set("com.dzirbel.day6.Day6bKt")
+            for (file in mainClassFiles) {
+                executable(KotlinCompilation.MAIN_COMPILATION_NAME, file.nameWithoutExtension.lowercase()) {
+                    mainClass.set("${file.path.removeSuffix(".${file.extension}")}Kt")
+                }
             }
         }
     }
 }
 
+val runTasks = tasks.named { taskName -> taskName.startsWith("run") }
+
+// execute days one-by-one, in order
+runTasks.sortedBy { it.name }.zipWithNext { previous, next -> next.mustRunAfter(previous) }
+
 tasks.register("runAll") {
     group = "application"
     description = "Run all executable binaries."
 
-    dependsOn(tasks.named { taskName -> taskName.startsWith("run") && taskName != name })
+    dependsOn(runTasks.named { taskName -> taskName != name })
 }
