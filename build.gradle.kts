@@ -39,10 +39,25 @@ kotlin {
     }
 }
 
-val runTasks = tasks.named { taskName -> taskName.startsWith("run") }
+private val runRegex = """^runJvmDay(\d+)([a|b])$""".toRegex()
+
+private val runTasks = tasks.named { taskName -> runRegex.matches(taskName) }
+
+runTasks.configureEach {
+    outputs.upToDateWhen { false }
+}
+
+private data class Day(val num: Int, val half: Char) : Comparable<Day> {
+    override fun compareTo(other: Day) = num.compareTo(other.num).takeIf { it != 0 } ?: half.compareTo(other.half)
+}
 
 // execute days one-by-one, in order
-runTasks.sortedBy { it.name }.zipWithNext { previous, next -> next.mustRunAfter(previous) }
+runTasks
+    .sortedBy { task ->
+        val (day, half) = checkNotNull(runRegex.matchEntire(task.name)).destructured
+        Day(num = day.toInt(), half = half.first())
+    }
+    .zipWithNext { previous, next -> next.mustRunAfter(previous) }
 
 tasks.register("runAll") {
     group = "application"
