@@ -98,17 +98,33 @@ private class JoltageMachine(
     private val numCounters = target.size
 
     // map from counter index to the button indices that increment it
-    private val counterToButtons: List<List<Int>> = List(numCounters) { counter ->
-        (0 until numButtons).filter { button -> buttons[button][counter] }
+    private val counterToButtons: Array<IntArray> = Array(numCounters) { counter ->
+        val tmp = IntArray(numButtons)
+        var size = 0
+        for (button in 0 until numButtons) {
+            if (buttons[button][counter]) {
+                tmp[size++] = button
+            }
+        }
+        tmp.copyOf(size)
     }
 
     // map from button index to the counters it increments
-    private val buttonToCounters: List<List<Int>> = List(numButtons) { button ->
-        (0 until numCounters).filter { counter -> buttons[button][counter] }
+    private val buttonToCounters: Array<IntArray> = Array(numButtons) { button ->
+        val tmp = IntArray(numCounters)
+        var size = 0
+        for (counter in 0 until numCounters) {
+            if (buttons[button][counter]) {
+                tmp[size++] = counter
+            }
+        }
+        tmp.copyOf(size)
     }
 
     // number of counters each button affects
-    private val buttonSizes: IntArray = buttons.map { button -> button.count { it } }.toIntArray()
+    private val buttonSizes: IntArray = IntArray(numButtons) { button ->
+        buttonToCounters[button].size
+    }
 
     // int mask of the counters affected by each button
     private val buttonToCounterMask: IntArray = IntArray(numButtons) { button ->
@@ -117,6 +133,16 @@ private class JoltageMachine(
             mask = mask or (1 shl counter)
         }
         mask
+    }
+
+    private val maskBitCount: IntArray? = if (numCounters <= 20) {
+        val counts = IntArray(1 shl numCounters)
+        for (mask in 1 until counts.size) {
+            counts[mask] = counts[mask shr 1] + (mask and 1)
+        }
+        counts
+    } else {
+        null
     }
 
     init {
@@ -210,7 +236,7 @@ private class JoltageMachine(
         // remove duplicate buttons
         for (buttonA in 0 until numButtons) {
             for (buttonB in buttonA + 1 until numButtons) {
-                if (buttonToCounters[buttonA] == buttonToCounters[buttonB]) {
+                if (buttonToCounters[buttonA].contentEquals(buttonToCounters[buttonB])) {
                     return minusButton(buttonA)
                         .simplify()
                 }
@@ -229,16 +255,15 @@ private class JoltageMachine(
 
     private fun dfs(state: State, bestCost: IntRef) {
         if (state.cost >= bestCost.value) return
-        if (state.residual.all { it == 0 }) {
+        if (state.isSolved()) {
             bestCost.value = state.cost
             return
         }
-        if (state.remainingButtons.all { !it }) return
 
         val state = state.forced() ?: return
 
         if (state.cost >= bestCost.value) return
-        if (state.residual.all { it == 0 }) {
+        if (state.isSolved()) {
             bestCost.value = state.cost
             return
         }
@@ -266,28 +291,74 @@ private class JoltageMachine(
             cost = 0,
         )
 
-        val maxPresses = IntArray(numButtons) { button ->
-            if (remainingButtons[button]) {
-                buttonToCounters[button].minOf { counter -> residual[counter] }
-            } else {
-                0
+        val maxPresses: IntArray = IntArray(numButtons)
+        val maxPressableButtonSize: Int
+
+        init {
+            var maxSize = 0
+            for (button in 0 until numButtons) {
+                if (!remainingButtons[button]) continue
+
+                val counters = buttonToCounters[button]
+                var minResidual = Int.MAX_VALUE
+                for (i in counters.indices) {
+                    val r = residual[counters[i]]
+                    if (r < minResidual) minResidual = r
+                }
+                if (minResidual == Int.MAX_VALUE) minResidual = 0
+
+                maxPresses[button] = minResidual
+                if (minResidual > 0) {
+                    val size = buttonSizes[button]
+                    if (size > maxSize) maxSize = size
+                }
             }
+            maxPressableButtonSize = maxSize
         }
 
         fun canPress(button: Int) = maxPresses[button] > 0
+
+        fun isSolved(): Boolean {
+            for (r in residual) {
+                if (r != 0) return false
+            }
+            return true
+        }
+
+        fun anyPressable(): Boolean {
+            for (button in 0 until numButtons) {
+                if (maxPresses[button] > 0) return true
+            }
+            return false
+        }
 
         /**
          * Applies forced button presses and returns the resulting [State], or null if it becomes unsatisfiable.
          */
         fun forced(): State? {
             var state = this
+            val forcedButtons = IntArray(numButtons)
+            val forcedCounts = IntArray(numButtons)
+            val forcedMark = IntArray(numButtons)
+            var stamp = 1
 
             while (true) {
-                if (state.residual.all { it == 0 }) return state
-                if (state.maxPresses.all { it == 0 }) return null
+                if (state.isSolved()) return state
+                if (!state.anyPressable()) return null
 
-                val forced = IntArray(numButtons) { -1 }
-                var forcedAny = false
+                var forcedSize = 0
+                val currentStamp = stamp++
+                var infeasible = false
+
+                fun setForced(button: Int, count: Int): Boolean {
+                    if (forcedMark[button] == currentStamp) {
+                        return forcedCounts[button] == count
+                    }
+                    forcedMark[button] = currentStamp
+                    forcedCounts[button] = count
+                    forcedButtons[forcedSize++] = button
+                    return true
+                }
 
                 for (counter in 0 until numCounters) {
                     val r = state.residual[counter]
@@ -297,7 +368,9 @@ private class JoltageMachine(
                     var totalPossiblePresses = 0
                     var soleButton = -1
 
-                    for (button in counterToButtons[counter]) {
+                    val buttons = counterToButtons[counter]
+                    for (i in buttons.indices) {
+                        val button = buttons[i]
                         val max = state.maxPresses[button]
                         if (max > 0) {
                             numPressableButtons++
@@ -306,32 +379,35 @@ private class JoltageMachine(
                         }
                     }
 
-                    if (numPressableButtons == 0) return null
-                    if (r > totalPossiblePresses) return null
+                    if (numPressableButtons == 0 || r > totalPossiblePresses) {
+                        infeasible = true
+                        break
+                    }
 
                     if (numPressableButtons == 1) {
                         // only a single button can cover this residual
-                        val existing = forced[soleButton]
-                        if (existing != -1 && existing != r) return null
-                        forced[soleButton] = r
-                        forcedAny = true
+                        if (!setForced(soleButton, r)) {
+                            infeasible = true
+                            break
+                        }
                     } else if (totalPossiblePresses == r) {
                         // all remaining capacity must be used exactly
-                        for (button in counterToButtons[counter]) {
+                        for (i in buttons.indices) {
+                            val button = buttons[i]
                             val max = state.maxPresses[button]
-                            if (max > 0) {
-                                val existing = forced[button]
-                                if (existing != -1 && existing != max) return null
-                                forced[button] = max
-                                forcedAny = true
+                            if (max > 0 && !setForced(button, max)) {
+                                infeasible = true
+                                break
                             }
                         }
+                        if (infeasible) break
                     }
                 }
 
-                if (!forcedAny) return state
+                if (infeasible) return null
+                if (forcedSize == 0) return state
 
-                state = state.applyPresses(forced) ?: return null
+                state = state.applyPresses(forcedButtons, forcedCounts, forcedSize) ?: return null
             }
         }
 
@@ -352,38 +428,72 @@ private class JoltageMachine(
                 if (r > boundByMax) boundByMax = r
             }
 
-            // since buttons are sorted by size, the first pressable button is the largest
-            val firstPressableButton = (0 until numButtons).first { button -> canPress(button) }
-            val maxPressableButtonSize = buttonSizes[firstPressableButton]
+            if (maxPressableButtonSize == 0) return Int.MAX_VALUE / 4
             val boundBySum = (residualSum + maxPressableButtonSize - 1) / maxPressableButtonSize
 
             var boundBySubset = 0
             val numMasks = 1 shl numCounters
-            for (mask in 1 until numMasks) {
-                var sum = 0
-                var remaining = mask
-                while (remaining != 0) {
-                    val lsb = remaining and -remaining
+            val pressableMasks = IntArray(numButtons)
+            var pressableCount = 0
+            for (button in 0 until numButtons) {
+                if (maxPresses[button] > 0) {
+                    pressableMasks[pressableCount++] = buttonToCounterMask[button]
+                }
+            }
+
+            val localMaskBitCount = maskBitCount
+            if (localMaskBitCount != null) {
+                val sumByMask = IntArray(numMasks)
+                for (mask in 1 until numMasks) {
+                    val lsb = mask and -mask
                     val index = Integer.numberOfTrailingZeros(lsb)
-                    sum += residual[index]
-                    remaining = remaining xor lsb
+                    sumByMask[mask] = sumByMask[mask xor lsb] + residual[index]
                 }
-                if (sum == 0) continue
 
-                val maskSize = Integer.bitCount(mask)
-                var cover = 0
-                for (button in 0 until numButtons) {
-                    if (!canPress(button)) continue
-                    val c = Integer.bitCount(buttonToCounterMask[button] and mask)
-                    if (c > cover) {
-                        cover = c
-                        if (cover == maskSize) break
+                for (mask in 1 until numMasks) {
+                    val sum = sumByMask[mask]
+                    if (sum == 0) continue
+
+                    val maskSize = localMaskBitCount[mask]
+                    var cover = 0
+                    for (i in 0 until pressableCount) {
+                        val c = Integer.bitCount(pressableMasks[i] and mask)
+                        if (c > cover) {
+                            cover = c
+                            if (cover == maskSize) break
+                        }
                     }
-                }
-                if (cover == 0) continue
+                    if (cover == 0) continue
 
-                val bound = (sum + cover - 1) / cover
-                if (bound > boundBySubset) boundBySubset = bound
+                    val bound = (sum + cover - 1) / cover
+                    if (bound > boundBySubset) boundBySubset = bound
+                }
+            } else {
+                for (mask in 1 until numMasks) {
+                    var sum = 0
+                    var remaining = mask
+                    while (remaining != 0) {
+                        val lsb = remaining and -remaining
+                        val index = Integer.numberOfTrailingZeros(lsb)
+                        sum += residual[index]
+                        remaining = remaining xor lsb
+                    }
+                    if (sum == 0) continue
+
+                    val maskSize = Integer.bitCount(mask)
+                    var cover = 0
+                    for (i in 0 until pressableCount) {
+                        val c = Integer.bitCount(pressableMasks[i] and mask)
+                        if (c > cover) {
+                            cover = c
+                            if (cover == maskSize) break
+                        }
+                    }
+                    if (cover == 0) continue
+
+                    val bound = (sum + cover - 1) / cover
+                    if (bound > boundBySubset) boundBySubset = bound
+                }
             }
 
             return maxOf(boundByMax, boundBySum, boundBySubset)
@@ -402,50 +512,59 @@ private class JoltageMachine(
                 val r = residual[counter]
                 if (r == 0) continue
 
-                val buttons = counterToButtons[counter].count { button -> canPress(button) }
+                var pressableButtons = 0
+                val buttons = counterToButtons[counter]
+                for (i in buttons.indices) {
+                    if (maxPresses[buttons[i]] > 0) pressableButtons++
+                }
 
-                if (buttons < minButtons || (buttons == minButtons && r < minResidual)) {
+                if (pressableButtons < minButtons || (pressableButtons == minButtons && r < minResidual)) {
                     hardestCounter = counter
-                    minButtons = buttons
+                    minButtons = pressableButtons
                     minResidual = r
                 }
             }
 
             // buttons are sorted by size, so the largest one is always the lowest index
-            return counterToButtons[hardestCounter].first { button -> canPress(button) }
+            val hardestButtons = counterToButtons[hardestCounter]
+            for (i in hardestButtons.indices) {
+                val button = hardestButtons[i]
+                if (maxPresses[button] > 0) return button
+            }
+            return -1
         }
 
         fun applyPresses(button: Int, count: Int): State? {
-            return State(
-                residual = residual.clone().also { newResidual ->
-                    if (count > 0) {
-                        for (counter in buttonToCounters[button]) {
-                            newResidual[counter] = (newResidual[counter] - count)
-                                .also { if (it < 0) return null }
-                        }
-                    }
-                },
-                remainingButtons = remainingButtons.clone().also { newRemainingButtons ->
-                    newRemainingButtons[button] = false
-                },
-                cost = cost + count,
-            )
+            val newResidual = if (count == 0) residual else residual.clone()
+            if (count > 0) {
+                for (counter in buttonToCounters[button]) {
+                    val updated = newResidual[counter] - count
+                    if (updated < 0) return null
+                    newResidual[counter] = updated
+                }
+            }
+
+            val newRemainingButtons = remainingButtons.clone()
+            newRemainingButtons[button] = false
+            return State(residual = newResidual, remainingButtons = newRemainingButtons, cost = cost + count)
         }
 
-        fun applyPresses(counts: IntArray): State? {
+        fun applyPresses(buttons: IntArray, countsByButton: IntArray, size: Int): State? {
             val newResidual = residual.clone()
             val newRemainingButtons = remainingButtons.clone()
             var cost = this.cost
 
-            for (button in 0 until numButtons) {
-                val count = counts[button]
+            for (i in 0 until size) {
+                val button = buttons[i]
+                val count = countsByButton[button]
                 if (count <= 0) continue
 
                 newRemainingButtons[button] = false
                 cost += count
                 for (counter in buttonToCounters[button]) {
-                    newResidual[counter] = (newResidual[counter] - count)
-                        .also { if (it < 0) return null }
+                    val updated = newResidual[counter] - count
+                    if (updated < 0) return null
+                    newResidual[counter] = updated
                 }
             }
 
