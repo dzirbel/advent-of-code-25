@@ -316,8 +316,6 @@ private class JoltageMachine(
             maxPressableButtonSize = maxSize
         }
 
-        fun canPress(button: Int) = maxPresses[button] > 0
-
         fun isSolved(): Boolean {
             for (r in residual) {
                 if (r != 0) return false
